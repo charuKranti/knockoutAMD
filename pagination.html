@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta http-equiv="content-type" content="text/html; charset=UTF-8">
+		<title>Knockout pagination component</title>
+		<meta http-equiv="content-type" content="text/html; charset=UTF-8">
+		<meta name="viewport" content="width=device-width, initial-scale=1">
+	</head>
+	<body>
+		<div>
+			<ul data-bind="foreach: paging.pageItems">
+				<li data-bind="text: name"></li>
+			</ul>
+			<button data-bind='click: addItem'>Add item</button>
+			<button data-bind='click: paging.sortBy.bind($data, "name")'>Sort by name</button>
+			<div>showing <span data-bind="text: paging.firstItemOnPage"></span>
+				to <span data-bind="text: paging.lastItemOnPage"> </span> of	<span data-bind="text: items().length"> </span> entries</div>
+		</div>
+		<div class="ko-grid-pageLinks">	<a data-bind="click: paging.toFirstPage, css: {'disabled': !paging.hasPreviousPage()}">First</a>
+			<a data-bind="click: paging.toPreviousPage, css: {'disabled': !paging.hasPreviousPage()}">Previous</a>
+			<!-- ko foreach: paging.getPageNumbers -->
+			<a data-bind="text: $data.text, click: function() { $parent.paging.pageNumber($data.number) }, css: { selected: ($data.number) == $parent.paging.pageNumber() }"></a>
+			<!-- /ko -->	<a data-bind="click: paging.toNextPage, css: {'disabled': !paging.hasNextPage()}">Next</a>
+			<a data-bind="click: paging.toLastPage, css: {'disabled': !paging.hasNextPage()}">Last</a>
+		</div>
+		<div>
+			<button data-bind="click: myupdate, text: 'Number of pages: '+(paging.totalPages())">Update</button>
+		</div>
+			<script type="text/javascript" src="js/knockout-3.2.0.js"></script>
+			<script type="text/javascript">
+				(function () {
+					ko.CGrid = {
+						// Defines a view model class you can use to populate a grid
+						viewModel: function (configuration) {
+                            var self = this;
+							this.data = configuration.data;
+							this.pageNumber = ko.observable(0);
+							this.pageSize = configuration.pageSize || 5;
+							this.maxSize = configuration.maxSize || 5;
+							this.rotate = configuration.rotate || false;
+							this.ellipsis = configuration.ellipsis || false;
+							var rotate = this.rotate;
+							var ellipsis = this.ellipsis;
+							var maxSize = this.maxSize;
+							this.totalCount = ko.pureComputed(function () {
+								return this.data().length;
+							}, this);
+							this.currentPage = ko.pureComputed(function () {
+								return (this.pageNumber() + 1);
+							}, this);
+							/* Total Number of pages */
+							this.totalPages = ko.computed(function () {
+								if (this.pageSize !== 0) return Math.ceil(ko.unwrap(this.data).length / this.pageSize);
+								else return 0;
+							}, this);
+							// first record index from total data on ever page 
+							this.firstItemOnPage = ko.pureComputed(function () {
+								return this.pageSize * this.pageNumber() + 1;
+							}, this);
+							this.lastItemOnPage = ko.pureComputed(function () {
+								if (this.totalCount() == 0) {
+									return 1;
+								}
+								return Math.min(
+									(this.pageNumber() + 1) * this.pageSize, this.totalCount());
+							}, this);
+							/* Creates page numbers */
+							this.getPageNumbers = ko.pureComputed(function () {
+								var currentPage = this.pageNumber() + 1;
+								var totalPages = this.totalPages();
+								var pages = [];
+								// Default page limits
+								var startPage = 1,
+									endPage = totalPages;
+								var isMaxSized = maxSize < totalPages;
+								// recompute if maxSize
+								if (isMaxSized) {
+									if (rotate) {
+										// Current page is displayed in the middle of the visible ones
+										startPage = Math.max(currentPage - Math.floor(maxSize / 2), 1);
+										endPage = startPage + maxSize - 1;
+										// Adjust if limit is exceeded
+										if (endPage > totalPages) {
+											endPage = totalPages;
+											startPage = endPage - maxSize + 1;
+										}
+									}
+								}
+								//console.log("range: ", ko.utils.range(startPage, endPage));
+								// Add page number links
+								for (var number = startPage; number <= endPage; number++) {
+									pages.push({"number": (number - 1),	"text": number,	"active": number === currentPage});
+								}
+								// Add links to move between page sets
+								if (isMaxSized && maxSize > 0 && ellipsis) {
+									if (startPage > 1) {
+										if (startPage > 3) { //need ellipsis for all options unless range is too close to beginning// previous pageset
+											pages.unshift({"number": (startPage - 1), "text": '...', "active": false});
+										}
+										if (startPage === 3) { //Replace ellipsis when the buttons would be sequential
+											pages.unshift({"number": 1,	"text": '2', "active": false});
+										}
+										//add the first page
+										pages.unshift({"number": 0,	"text": '1', "active": false});
+									}
+									if (endPage < totalPages) {
+										if (endPage < totalPages - 2) { //set ellipsis for all options unless range is too close to end// next pageset
+											pages.push({"number": (endPage), "text": '...',	"active": false});
+										}
+										if (endPage === totalPages - 2) { //Replace ellipsis when the buttons would be sequential// second to last page link
+											pages.push({"number": (totalPages - 2),	"text": (totalPages - 1), "active": false});
+										}
+										//add the last page
+										pages.push({"number": totalPages - 1, "text": totalPages, "active": false});
+									}
+								}
+								return pages;
+							}, this);
+							/* creates list of items for per page */
+                            /* sorting */
+                            this.isSort = false;
+                            this.sortBy = function(prop) {
+                                self.isSort = !self.isSort;
+                                self.data.sort(function(previous, current) {
+                                    if (previous[prop] > current[prop]) {
+                                        return !self.isSort ? -1 : 1;
+                                    } else if (previous[prop] < current[prop]) {
+                                        return self.isSort ? -1 : 1;
+                                    }
+                                    return 0;
+                                });
+                            };
+							this.pageItems = ko.computed(function () {
+								var startIndex = this.pageSize * this.pageNumber();
+								return ko.unwrap(this.data).slice(startIndex, startIndex + this.pageSize);
+							}, this);
+							this.maxpageNumber = ko.computed(function () {
+								return Math.ceil(ko.unwrap(this.data).length / this.pageSize) - 1;
+							}, this);
+							this.isFirstPage = ko.pureComputed(function () {
+								return (this.pageNumber() + 1) == 1;
+							}, this);
+							this.hasPreviousPage = ko.pureComputed(function () {
+								return !this.isFirstPage();
+							}, this);
+							this.isLastPage = ko.pureComputed(function () {
+								return (this.pageNumber() + 1) == this.totalPages();
+							}, this);
+							this.hasNextPage = ko.pureComputed(function () {
+								return !this.isLastPage();
+							}, this);
+							this.toNextPage = function () {
+								if (this.hasNextPage()) {
+									this.pageNumber(this.pageNumber() + 1);
+								}
+							}.bind(this);
+							this.toPreviousPage = function () {
+								if (this.hasPreviousPage()) {
+									this.pageNumber(this.pageNumber() - 1);
+								}
+							}.bind(this);
+							this.toFirstPage = function () {
+								if (!this.isFirstPage()) {
+									this.pageNumber(0);
+								}
+							}.bind(this);
+							this.toLastPage = function () {
+								if (!this.isLastPage()) {
+									this.pageNumber(this.totalPages() - 1);
+								}
+							}.bind(this);
+						}
+					};
+					// The "CGrid" binding
+					ko.bindingHandlers.CGrid = {
+						init: function () {return {'controlsDescendantBindings': true};},
+						// This method is called to initialize the node, and will also be called again if you change what the grid is bound to
+						update: function (element, viewModelAccessor, allBindings) {}
+					};
+				})();
+			</script>
+			<script>
+				var initialData = [
+					{ name: "Well-Travelled Kitten", sales: 352, price: 75.95 },
+					{ name: "Speedy Coyote", sales: 89, price: 190.00 },
+					{ name: "Furious Lizard", sales: 152, price: 25.00 },
+					{ name: "Indifferent Monkey", sales: 1, price: 99.95 },
+					{ name: "Brooding Dragon", sales: 0, price: 6350 },
+					{ name: "Ingenious Tadpole", sales: 39450, price: 0.35 },
+					{ name: "Optimistic Snail", sales: 420, price: 1.50 },
+					{ name: "Speedy Coyote", sales: 89, price: 190.00 },
+					{ name: "Furious Lizard", sales: 152, price: 25.00 },
+					{ name: "Indifferent Monkey", sales: 1, price: 99.95 },
+					{ name: "Brooding Dragon", sales: 0, price: 6350 },
+					{ name: "Speedy Coyote", sales: 89, price: 190.00 },
+					{ name: "Furious Lizard", sales: 152, price: 25.00 },
+					{ name: "Indifferent Monkey", sales: 1, price: 99.95 },
+					{ name: "Brooding Dragon", sales: 0, price: 6350 }
+				];
+				 
+				var PagedGridModel = function() {
+					this.items = ko.observableArray(initialData);
+				 
+					this.addItem = function() {
+						this.items.push({ name: "New item", sales: 0, price: 100 });
+					};
+                    this.deleteItem = function(index) {
+						this.items.splice(index, 1);
+					};
+				 
+					this.paging = new ko.CGrid.viewModel({
+						data: this.items,
+						pageSize: 4,
+						ellipsis: true,
+						rotate: true
+					});
+					this.myupdate = function() {
+						var i=0
+						var lists = Array(1000).fill(0).map(function(item){
+						   i++;
+						   obj = {"name":"Name: "+i}
+						   return obj;
+						});
+						this.items(lists);
+					};
+				};
+				 
+				ko.applyBindings(new PagedGridModel());
+			</script>
+	</body>
+</html>
